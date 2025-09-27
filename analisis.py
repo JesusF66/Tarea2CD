@@ -34,31 +34,44 @@ def eda_completo(df, target_var=None):
     # 2. TIPOS DE DATOS
     print("\n2. TIPOS DE DATOS")
     print(df.dtypes.value_counts())
-    
     # 3. DATOS FALTANTES
-    print("\n3. ANÁLISIS DE DATOS FALTANTES")
-    missing_data = df.isnull().sum()
-    missing_percent = (missing_data / len(df)) * 100
-    
-    missing_df = pd.DataFrame({
-        'Valores Faltantes': missing_data,
-        'Porcentaje': missing_percent
-    }).sort_values('Porcentaje', ascending=False)
-    
-    print(missing_df[missing_df['Valores Faltantes'] > 0])
+print("\n3. ANÁLISIS DE DATOS FALTANTES")
+missing_data = df.isnull().sum()
+missing_percent = (missing_data / len(df)) * 100
+
+missing_df = pd.DataFrame({
+    'Valores_Faltantes': missing_data,
+    'Porcentaje': missing_percent
+}).sort_values('Porcentaje', ascending=False)
+
+# FILTRAR solo variables con faltantes (evita mostrar todas)
+missing_with_values = missing_df[missing_df['Valores_Faltantes'] > 0]
+
+if not missing_with_values.empty:
+    print("Variables con datos faltantes:")
+    print(missing_with_values)
     
     # Visualización de missingness
-    if missing_data.sum() > 0:
-        plt.figure(figsize=(10, 6))
-        msno.matrix(df)
-        plt.title('Mapa de Datos Faltantes')
-        plt.show()
-        
-        plt.figure(figsize=(10, 6))
-        msno.heatmap(df)
-        plt.title('Correlación de Faltantes')
-        plt.show()
+    plt.figure(figsize=(12, 6))
+    msno.matrix(df)
+    plt.title('Mapa de Datos Faltantes')
+    plt.tight_layout()
+    plt.show()
     
+    plt.figure(figsize=(10, 6))
+    msno.heatmap(df)
+    plt.title('Correlación de Datos Faltantes')
+    plt.tight_layout()
+    plt.show()
+    
+    # Estadísticas adicionales útiles
+    print(f"\nResumen de datos faltantes:")
+    print(f"Total de valores faltantes: {missing_data.sum()}")
+    print(f"Porcentaje total de faltantes: {(missing_data.sum() / (len(df) * len(df.columns)) * 100):.2f}%")
+    print(f"Variables con faltantes: {len(missing_with_values)} de {len(df.columns)}")
+    
+else:
+    print("✅ No se encontraron datos faltantes en el dataset.")
     # 4. ESTADÍSTICAS DESCRIPTIVAS
     print("\n4. ESTADÍSTICAS DESCRIPTIVAS")
     print(df.describe(include='all').T)
@@ -234,10 +247,12 @@ eda_completo(df, target_var='target')
 #PREPROCESAMIENTO
 
 
-
-
-
-
+# 3. Usando attributes de pandas
+print(list(df.columns))
+print(df['marital'].unique())
+print(df['default'].unique())
+print(df['poutcome'].unique())
+print(df['education'].unique())
 
 
 
