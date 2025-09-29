@@ -7,8 +7,16 @@ import seaborn as sns
 from scipy import stats
 import missingno as msno
 from sklearn.preprocessing import LabelEncoder
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.model_selection import train_test_split
+from scipy.linalg import inv
+
+
+
+
+
+
+
+
 
 # Configuración de estilo
 plt.style.use('seaborn-v0_8')
@@ -245,15 +253,18 @@ eda_completo(df, target_var='target')
 
 ################
 #PREPROCESAMIENTO
+#Las variables categoricas se convierten en dummys
+# Para múltiples columnas categóricas
+categorical_cols = ['job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'month', 'day_of_week', 'poutcome']
+df_dummies = pd.get_dummies(df[categorical_cols])
+df = pd.concat([df, df_dummies], axis=1)
 
-
-# 3. Usando attributes de pandas
-print(list(df.columns))
-print(df['marital'].unique())
-print(df['default'].unique())
-print(df['poutcome'].unique())
-print(df['education'].unique())
-
+# Eliminar las columnas originales si quieres
+df = df.drop(categorical_cols, axis=1)
+X = df.drop('y', axis=1)
+y = df['y']
+print(X)
+print(y)
 
 
 
@@ -289,27 +300,6 @@ X_train, X_test, y_train, y_test = train_test_split(
 print("Tamaño entrenamiento:", X_train.shape)
 print("Tamaño prueba:", X_test.shape)
 
-def plot_decision_boundary(model, X, y, title):
-    # Crear nueva figura cada vez
-    plt.figure(figsize=(6, 5))
-    
-    # Crear grid en el espacio 2D
-    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
-    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
-    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 200),
-                         np.linspace(y_min, y_max, 200))
-    
-    # Predicciones sobre el grid
-    Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
-
-    # Graficar fronteras y puntos
-    plt.contourf(xx, yy, Z, alpha=0.3, cmap=plt.cm.Set1)
-    plt.scatter(X[:, 0], X[:, 1], c=y, cmap=plt.cm.Set1, edgecolor="k", s=40)
-    plt.xlabel(iris.feature_names[0])
-    plt.ylabel(iris.feature_names[1])
-    plt.title(title)
-    plt.show()
 
 
 #=====================================
@@ -321,9 +311,15 @@ from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, r
 # Entrenar
 nb = GaussianNB()
 nb.fit(X_train, y_train)
-
-# Graficar frontera
-plot_decision_boundary(nb, X_train, y_train, "Frontera de decisión - Naive Bayes")
+# Después del entrenamiento, puedes ver los priors:
+print("Priors usados por el modelo:", nb.class_prior_)
+print("Clases:", nb.classes_)
+#Caso de aprioris iguales
+#nb = GaussianNB(priors=[0.5, 0.5])  # Asumiendo [clase_0, clase_1]
+#nb.fit(X_train, y_train)
+# Para ver las aprioris
+print("Distribución de clases en y_train:")
+print(pd.Series(y_train).value_counts(normalize=True))
 
 # Evaluar
 y_pred_nb = nb.predict(X_test)
@@ -348,8 +344,6 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 lda = LinearDiscriminantAnalysis()
 lda.fit(X_train, y_train)
 
-# Graficar frontera
-plot_decision_boundary(lda, X_train, y_train, "Frontera de decisión - LDA")
 
 # Evaluar
 y_pred_lda = lda.predict(X_test)
@@ -369,8 +363,6 @@ from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 qda = QuadraticDiscriminantAnalysis()
 qda.fit(X_train, y_train)
 
-# Graficar frontera
-plot_decision_boundary(qda, X_train, y_train, "Frontera de decisión - QDA")
 
 # Evaluar
 y_pred_qda = qda.predict(X_test)
@@ -381,6 +373,61 @@ print("Precisión:", precision_score(y_test, y_pred_qda, average='weighted'))
 print("Sensibilidad:", recall_score(y_test, y_pred_qda, average='weighted'))
 print("F1-score:", f1_score(y_test, y_pred_qda, average='weighted'))
 
+#=====================================
+# Fisher
+#=====================================
+
+def fisher_direction(X, y):
+    """
+    Encuentra la dirección de Fisher pura
+    Retorna el vector w que maximiza la separación entre clases
+    """
+    # Separar clases
+    classes = np.unique(y)
+    if len(classes) != 2:
+        raise ValueError("Fisher solo para 2 clases")
+    
+    X0 = X[y == classes[0]]
+    X1 = X[y == classes[1]]
+    
+    # Medias de cada clase
+    mu0 = np.mean(X0, axis=0)
+    mu1 = np.mean(X1, axis=0)
+    
+    # Matrices de covarianza dentro de cada clase
+    S0 = np.cov(X0, rowvar=False, bias=True) * len(X0)
+    S1 = np.cov(X1, rowvar=False, bias=True) * len(X1)
+    
+    # Matriz de dispersión dentro de clases
+    SW = S0 + S1
+    
+    # Dirección de Fisher (sin el threshold)
+    w = inv(SW) @ (mu1 - mu0)
+    
+    return w
+
+# Obtener dirección de Fisher pura
+w_fisher = fisher_direction(X_train_scaled, y_train)
+
+def fisher_threshold_classifier(projections, y_train):
+    """
+    Encuentra el mejor threshold en el espacio proyectado
+    """
+    # Separar proyecciones por clase
+    proj_class0 = projections[y_train == 0]
+    proj_class1 = projections[y_train == 1]
+    
+    # Encontrar threshold que maximiza separación
+    # Simple: punto medio entre medias proyectadas
+    threshold = (np.mean(proj_class0) + np.mean(proj_class1)) / 2
+    
+    return threshold
+
+# Encontrar threshold óptimo
+threshold = fisher_threshold_classifier(X_train_fisher, y_train)
+
+# Clasificar
+y_pred_fisher = (X_test_fisher > threshold).astype(int)
 
 
 
@@ -393,8 +440,6 @@ from sklearn.neighbors import KNeighborsClassifier
 knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(X_train, y_train)
 
-# Graficar frontera
-plot_decision_boundary(knn, X_train, y_train, "Frontera de decisión - k-NN (k=5)")
 
 # Evaluar
 y_pred_knn = knn.predict(X_test)
@@ -483,7 +528,7 @@ trained_models = {
 # Graficar matrices de confusión
 fig, axes = plt.subplots(2, 2, figsize=(10, 8))
 axes = axes.ravel()
-
+target_names = ['no', 'yes']  # Los valores únicos de tu columna 'y'
 for ax, (name, model) in zip(axes, trained_models.items()):
     y_pred = model.predict(X_test)
     cm = confusion_matrix(y_test, y_pred)
