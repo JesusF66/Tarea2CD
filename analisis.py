@@ -251,21 +251,6 @@ else:
 
 eda_completo(df, target_var='target')
 
-################
-#PREPROCESAMIENTO
-#Las variables categoricas se convierten en dummys
-# Para múltiples columnas categóricas
-categorical_cols = ['job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'month', 'day_of_week', 'poutcome']
-df_dummies = pd.get_dummies(df[categorical_cols])
-df = pd.concat([df, df_dummies], axis=1)
-
-# Eliminar las columnas originales si quieres
-df = df.drop(categorical_cols, axis=1)
-X = df.drop('y', axis=1)
-y = df['y']
-print(X)
-print(y)
-
 
 
 
@@ -378,10 +363,6 @@ print("F1-score:", f1_score(y_test, y_pred_qda, average='weighted'))
 #=====================================
 
 def fisher_direction(X, y):
-    """
-    Encuentra la dirección de Fisher pura
-    Retorna el vector w que maximiza la separación entre clases
-    """
     # Separar clases
     classes = np.unique(y)
     if len(classes) != 2:
@@ -398,7 +379,7 @@ def fisher_direction(X, y):
     S0 = np.cov(X0, rowvar=False, bias=True) * len(X0)
     S1 = np.cov(X1, rowvar=False, bias=True) * len(X1)
     
-    # Matriz de dispersión dentro de clases
+    # Matriz de dispersión de ambas clases
     SW = S0 + S1
     
     # Dirección de Fisher (sin el threshold)
@@ -406,28 +387,29 @@ def fisher_direction(X, y):
     
     return w
 
-# Obtener dirección de Fisher pura
-w_fisher = fisher_direction(X_train_scaled, y_train)
+# Obtener dirección de Fisher 
+w_fisher = fisher_direction(X_train, y_train)
 
-def fisher_threshold_classifier(projections, y_train):
-    """
-    Encuentra el mejor threshold en el espacio proyectado
-    """
+def umbral_fisher(projections, y_train):
+    
     # Separar proyecciones por clase
     proj_class0 = projections[y_train == 0]
     proj_class1 = projections[y_train == 1]
     
     # Encontrar threshold que maximiza separación
     # Simple: punto medio entre medias proyectadas
-    threshold = (np.mean(proj_class0) + np.mean(proj_class1)) / 2
+    umbral = (np.mean(proj_class0) + np.mean(proj_class1)) / 2
     
-    return threshold
+    return umbral
 
-# Encontrar threshold óptimo
-threshold = fisher_threshold_classifier(X_train_fisher, y_train)
+# Encontrar umbral óptimo
+umbral = umbral_fisher(X_train, y_train)
 
+
+#Proyecta la prueba
+X_test_fisher=umbral.T X_test
 # Clasificar
-y_pred_fisher = (X_test_fisher > threshold).astype(int)
+y_pred_fisher = (X_test_fisher > umbral).astype(int)
 
 
 
