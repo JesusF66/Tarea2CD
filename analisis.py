@@ -1,3 +1,9 @@
+"""
+29 de septiembre del 2025
+Tarea 2 Introduccion a ciencia de datos
+Rodrigo Jesus Cesar
+"""
+
 #ANALISIS EXPLORATORIO DE LOS DATOS
 import os
 import pandas as pd
@@ -6,24 +12,286 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 import missingno as msno
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
-from scipy.linalg import inv
-
-
-
-
-
-
+from sklearn.preprocessing import LabelEncoder, StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+import warnings
+warnings.filterwarnings('ignore')
 
 
 
 # Configuración de estilo
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
-os.chdir(r"D:\Documents\FUNCIONES\Tarea2CD")
-df=pd.read_csv('bank-additional-full.csv',sep=';')
+#os.chdir(r"D:\Documents\FUNCIONES\Tarea2CD")
+file_path="/Users/rodri/Downloads/bank-additional-full.csv"
+
+df=pd.read_csv(file_path,sep=';')
+#df=pd.read_csv('bank-additional-full.csv',sep=';')
 print(df)
+
+
+
+
+def map_education_level(education):
+    """
+    Mapear los niveles educativos a una escala ordinal
+    """
+    education_order = {
+        'illiterate': 0,
+        'basic.4y': 1,
+        'basic.6y': 2,
+        'basic.9y': 3,
+        'high.school': 4,
+        'professional.course': 5,
+        'university.degree': 6,
+        'unknown': -1  # Para valores desconocidos
+    }
+    return education_order.get(education, -1)
+
+def preprocess_bank_data(file_path):
+    """
+    Función para preprocesar el dataset bank-additional-full.csv
+    """
+    
+    # 1. Cargar los datos
+    print("Cargando datos...")
+    df = pd.read_csv(file_path, delimiter=';')
+    
+    print(f"Dimensiones originales: {df.shape}")
+    print(f"Columnas: {df.columns.tolist()}")
+    
+    # 2. Análisis inicial de los datos
+    print("\n" + "="*50)
+    print("ANÁLISIS INICIAL")
+    print("="*50)
+    
+    print(f"\nValores únicos en 'education':")
+    print(df['education'].value_counts())
+    
+    # 3. Identificar tipos de variables
+    categorical_cols = ['job', 'marital', 'education', 'default', 'housing', 'loan', 
+                       'contact', 'month', 'day_of_week', 'poutcome', 'y']
+    
+    numerical_cols = ['age', 'duration', 'campaign', 'pdays', 'previous', 
+                     'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 
+                     'euribor3m', 'nr.employed']
+    
+    # 4. Preprocesamiento ESPECIAL para educación (codificación ordinal)
+    print("\n" + "="*50)
+    print("CODIFICACIÓN ORDINAL PARA EDUCACIÓN")
+    print("="*50)
+    
+    # Aplicar mapeo ordinal a educación
+    df['education_ordinal'] = df['education'].apply(map_education_level)
+    
+    print("Distribución de niveles educativos:")
+    education_mapping = {
+        0: 'illiterate',
+        1: 'basic.4y', 
+        2: 'basic.6y',
+        3: 'basic.9y',
+        4: 'high.school',
+        5: 'professional.course',
+        6: 'university.degree',
+        -1: 'unknown'
+    }
+    
+    for code, level in education_mapping.items():
+        count = (df['education_ordinal'] == code).sum()
+        print(f"Nivel {code} ({level}): {count} registros")
+    
+    # 5. Preprocesamiento de otras variables categóricas
+    print("\n" + "="*50)
+    print("PREPROCESAMIENTO DE OTRAS VARIABLES CATEGÓRICAS")
+    print("="*50)
+    
+    # Justificación para codificación:
+    # - One-Hot Encoding: Para variables nominales sin orden inherente (job, marital, etc.)
+    # - Label Encoding: Para variables binarias (y) y ordinales (pero en este caso todas son nominales)
+    
+    # Variables para One-Hot Encoding (nominales)
+    one_hot_cols = ['job', 'marital', 'contact', 'month', 'day_of_week', 'poutcome']
+    
+    # Variables para Label Encoding (binarias)
+    label_encode_cols = ['default', 'housing', 'loan', 'y']
+    
+    # Aplicar Label Encoding
+    label_encoders = {}
+    for col in label_encode_cols:
+        le = LabelEncoder()
+        df[col + '_encoded'] = le.fit_transform(df[col])
+        label_encoders[col] = le
+        print(f"Label Encoding para {col}: {dict(zip(le.classes_, le.transform(le.classes_)))}")
+    
+    # 6. Preprocesamiento de variables numéricas
+    print("\n" + "="*50)
+    print("PREPROCESAMIENTO DE VARIABLES NUMÉRICAS")
+    print("="*50)
+    
+    scaler = StandardScaler()
+    numerical_scaled = scaler.fit_transform(df[numerical_cols])
+    df_numerical_scaled = pd.DataFrame(numerical_scaled, 
+                                     columns=[col + '_scaled' for col in numerical_cols])
+    
+    print("Estadísticas después del escalamiento:")
+    print(df_numerical_scaled.describe())
+    
+    # 7. Manejo de valores especiales
+    print("\n" + "="*50)
+    print("MANEJO DE VALORES ESPECIALES")
+    print("="*50)
+    
+    # pdays = 999 indica que no hubo contacto previo
+    df['previous_contact'] = (df['pdays'] != 999).astype(int)
+    print(f"Clientes con contacto previo: {df['previous_contact'].sum()} de {len(df)}")
+    
+    # Manejar valores unknown en educación (imputar con la moda)
+    unknown_mask = df['education_ordinal'] == -1
+    if unknown_mask.sum() > 0:
+        mode_education = df[df['education_ordinal'] != -1]['education_ordinal'].mode()[0]
+        df.loc[unknown_mask, 'education_ordinal'] = mode_education
+        print(f"Valores 'unknown' en educación imputados con: {education_mapping[mode_education]}")
+    
+    # 8. Crear dataset preprocesado final
+    print("\n" + "="*50)
+    print("DATASET FINAL PREPROCESADO")
+    print("="*50)
+    
+    # Combinar todas las transformaciones
+    df_final = pd.concat([
+        df[one_hot_cols],  # Variables para one-hot encoding
+        df[[col + '_encoded' for col in label_encode_cols]],  # Variables label encoded
+        df[['education_ordinal']],  # Educación codificada ordinalmente
+        df_numerical_scaled,  # Variables numéricas escaladas
+        df[['previous_contact']]  # Nueva variable creada
+    ], axis=1)
+    
+    # Aplicar One-Hot Encoding a las variables nominales
+    df_final = pd.get_dummies(df_final, columns=one_hot_cols, prefix=one_hot_cols)
+    
+    print(f"Dimensiones finales: {df_final.shape}")
+    print(f"Número de características finales: {len(df_final.columns)}")
+    
+    # 9. Separar características y variable objetivo
+    X = df_final.drop('y_encoded', axis=1)
+    y = df_final['y_encoded']
+    
+    print(f"\nDistribución de la variable objetivo:")
+    print(f"No: {sum(y == 0)} ({sum(y == 0)/len(y)*100:.2f}%)")
+    print(f"Sí: {sum(y == 1)} ({sum(y == 1)/len(y)*100:.2f}%)")
+    
+    # 10. Análisis de correlación con educación
+    print("\n" + "="*50)
+    print("ANÁLISIS DE EDUCACIÓN")
+    print("="*50)
+    
+    # Correlación entre educación y la variable objetivo
+    education_corr = np.corrcoef(df_final['education_ordinal'], y)[0,1]
+    print(f"Correlación entre nivel educativo y suscripción: {education_corr:.4f}")
+    
+    # Distribución de suscripciones por nivel educativo
+    print("\nTasa de suscripción por nivel educativo:")
+    for code, level in education_mapping.items():
+        if code != -1:  # Excluir unknown
+            mask = df['education_ordinal'] == code
+            if mask.sum() > 0:
+                subscription_rate = y[mask].mean()
+                count = mask.sum()
+                print(f"{level}: {subscription_rate:.3f} ({count} registros)")
+    
+    return X, y, df_final, label_encoders, scaler, education_mapping
+
+def create_preprocessing_pipeline():
+    """
+    Crear un pipeline de preprocesamiento que incluya la codificación ordinal para educación
+    """
+    numerical_features = ['age', 'duration', 'campaign', 'pdays', 'previous', 
+                         'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 
+                         'euribor3m', 'nr.employed']
+    
+    categorical_features = ['job', 'marital', 'default', 'housing', 'loan', 
+                           'contact', 'month', 'day_of_week', 'poutcome']
+    
+    # Transformadores
+    numerical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+    
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='unknown')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+    
+    # Combinar en preprocesador
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numerical_transformer, numerical_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+    
+    return preprocessor
+
+# Función adicional para aplicar el mismo preprocesamiento a nuevos datos
+def preprocess_new_data(new_df, label_encoders, scaler, education_mapping):
+    """
+    Aplicar el mismo preprocesamiento a nuevos datos
+    """
+    df_processed = new_df.copy()
+    
+    # 1. Codificación ordinal para educación
+    df_processed['education_ordinal'] = df_processed['education'].apply(
+        lambda x: education_mapping.get(x, -1)
+    )
+    
+    # 2. Label Encoding para variables binarias
+    for col in ['default', 'housing', 'loan', 'y']:
+        if col in df_processed.columns:
+            le = label_encoders[col]
+            # Manejar nuevas categorías
+            mask = ~df_processed[col].isin(le.classes_)
+            if mask.any():
+                df_processed.loc[mask, col] = le.classes_[0]  # Asignar la primera categoría
+            df_processed[col + '_encoded'] = le.transform(df_processed[col])
+    
+    # 3. Escalar variables numéricas
+    numerical_cols = ['age', 'duration', 'campaign', 'pdays', 'previous', 
+                     'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 
+                     'euribor3m', 'nr.employed']
+    
+    numerical_scaled = scaler.transform(df_processed[numerical_cols])
+    df_numerical_scaled = pd.DataFrame(numerical_scaled, 
+                                     columns=[col + '_scaled' for col in numerical_cols])
+    
+    # 4. Variable de contacto previo
+    df_processed['previous_contact'] = (df_processed['pdays'] != 999).astype(int)
+    
+    # 5. One-Hot Encoding para variables nominales
+    one_hot_cols = ['job', 'marital', 'contact', 'month', 'day_of_week', 'poutcome']
+    df_final = pd.concat([
+        df_processed[one_hot_cols],
+        df_processed[[col + '_encoded' for col in ['default', 'housing', 'loan', 'y'] if col + '_encoded' in df_processed.columns]],
+        df_processed[['education_ordinal']],
+        df_numerical_scaled,
+        df_processed[['previous_contact']]
+    ], axis=1)
+    
+    df_final = pd.get_dummies(df_final, columns=one_hot_cols, prefix=one_hot_cols)
+    
+    return df_final
+
+
+file_path = "bank-additional-full.csv"
+
+X, y, df_final, label_encoders, scaler, education_mapping = preprocess_bank_data(file_path)
+
+# Crear pipeline
+preprocessor = create_preprocessing_pipeline()
+
+# Guardar resultados
+df_final.to_csv('bank_data_preprocessed_ordinal2.csv', index=False)
 
 
 def eda_completo(df, target_var=None):
@@ -251,6 +519,18 @@ else:
 
 eda_completo(df, target_var='target')
 
+################
+#PREPROCESAMIENTO
+
+
+# 3. Usando attributes de pandas
+print(list(df.columns))
+print(df['marital'].unique())
+print(df['default'].unique())
+print(df['poutcome'].unique())
+print(df['education'].unique())
+
+
 
 
 
@@ -285,6 +565,27 @@ X_train, X_test, y_train, y_test = train_test_split(
 print("Tamaño entrenamiento:", X_train.shape)
 print("Tamaño prueba:", X_test.shape)
 
+def plot_decision_boundary(model, X, y, title):
+    # Crear nueva figura cada vez
+    plt.figure(figsize=(6, 5))
+    
+    # Crear grid en el espacio 2D
+    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 200),
+                         np.linspace(y_min, y_max, 200))
+    
+    # Predicciones sobre el grid
+    Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    # Graficar fronteras y puntos
+    plt.contourf(xx, yy, Z, alpha=0.3, cmap=plt.cm.Set1)
+    plt.scatter(X[:, 0], X[:, 1], c=y, cmap=plt.cm.Set1, edgecolor="k", s=40)
+    plt.xlabel(iris.feature_names[0])
+    plt.ylabel(iris.feature_names[1])
+    plt.title(title)
+    plt.show()
 
 
 #=====================================
@@ -296,15 +597,9 @@ from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, r
 # Entrenar
 nb = GaussianNB()
 nb.fit(X_train, y_train)
-# Después del entrenamiento, puedes ver los priors:
-print("Priors usados por el modelo:", nb.class_prior_)
-print("Clases:", nb.classes_)
-#Caso de aprioris iguales
-#nb = GaussianNB(priors=[0.5, 0.5])  # Asumiendo [clase_0, clase_1]
-#nb.fit(X_train, y_train)
-# Para ver las aprioris
-print("Distribución de clases en y_train:")
-print(pd.Series(y_train).value_counts(normalize=True))
+
+# Graficar frontera
+plot_decision_boundary(nb, X_train, y_train, "Frontera de decisión - Naive Bayes")
 
 # Evaluar
 y_pred_nb = nb.predict(X_test)
@@ -329,6 +624,8 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 lda = LinearDiscriminantAnalysis()
 lda.fit(X_train, y_train)
 
+# Graficar frontera
+plot_decision_boundary(lda, X_train, y_train, "Frontera de decisión - LDA")
 
 # Evaluar
 y_pred_lda = lda.predict(X_test)
@@ -348,6 +645,8 @@ from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 qda = QuadraticDiscriminantAnalysis()
 qda.fit(X_train, y_train)
 
+# Graficar frontera
+plot_decision_boundary(qda, X_train, y_train, "Frontera de decisión - QDA")
 
 # Evaluar
 y_pred_qda = qda.predict(X_test)
@@ -358,6 +657,7 @@ print("Precisión:", precision_score(y_test, y_pred_qda, average='weighted'))
 print("Sensibilidad:", recall_score(y_test, y_pred_qda, average='weighted'))
 print("F1-score:", f1_score(y_test, y_pred_qda, average='weighted'))
 
+<<<<<<< HEAD
 #=====================================
 # Fisher
 #=====================================
@@ -410,6 +710,8 @@ umbral = umbral_fisher(X_train, y_train)
 X_test_fisher=umbral.T X_test
 # Clasificar
 y_pred_fisher = (X_test_fisher > umbral).astype(int)
+=======
+>>>>>>> origin/main
 
 
 
@@ -422,6 +724,8 @@ from sklearn.neighbors import KNeighborsClassifier
 knn = KNeighborsClassifier(n_neighbors=5)
 knn.fit(X_train, y_train)
 
+# Graficar frontera
+plot_decision_boundary(knn, X_train, y_train, "Frontera de decisión - k-NN (k=5)")
 
 # Evaluar
 y_pred_knn = knn.predict(X_test)
@@ -510,7 +814,7 @@ trained_models = {
 # Graficar matrices de confusión
 fig, axes = plt.subplots(2, 2, figsize=(10, 8))
 axes = axes.ravel()
-target_names = ['no', 'yes']  # Los valores únicos de tu columna 'y'
+
 for ax, (name, model) in zip(axes, trained_models.items()):
     y_pred = model.predict(X_test)
     cm = confusion_matrix(y_test, y_pred)
@@ -522,6 +826,152 @@ for ax, (name, model) in zip(axes, trained_models.items()):
 
 plt.tight_layout()
 plt.show()
+
+#=====================================================
+#===============Preprocesamiento======================
+#=====================================================
+
+def map_education_level(education):
+    """
+    Mapear los niveles educativos a una escala ordinal
+    """
+    education_order = {
+        'illiterate': 0,
+        'basic.4y': 1,
+        'basic.6y': 2,
+        'basic.9y': 3,
+        'high.school': 4,
+        'professional.course': 5,
+        'university.degree': 6,
+        'unknown': -1  # Para valores desconocidos
+    }
+    return education_order.get(education, -1)
+
+def preprocess_bank_data(file_path):
+    """
+    Función para preprocesar el dataset bank-additional-full.csv
+    """
+    
+    # 1. Cargar los datos
+    print("Cargando datos...")
+    df = pd.read_csv(file_path, delimiter=';')
+    
+    print(f"Dimensiones originales: {df.shape}")
+    print(f"Columnas: {df.columns.tolist()}")
+    
+    # 2. Análisis inicial de los datos
+    
+    print(f"\nValores únicos en 'education':")
+    print(df['education'].value_counts())
+    
+    # 3. Identificar tipos de variables
+    categorical_cols = ['job', 'marital', 'education', 'default', 'housing', 'loan', 
+                       'contact', 'month', 'day_of_week', 'poutcome', 'y']
+    
+    numerical_cols = ['age', 'duration', 'campaign', 'pdays', 'previous', 
+                     'emp.var.rate', 'cons.price.idx', 'cons.conf.idx', 
+                     'euribor3m', 'nr.employed']
+    
+    # 4. Preprocesamiento ESPECIAL para educación (codificación ordinal)
+    
+    # Aplicar mapeo ordinal a educación
+    df['education_ordinal'] = df['education'].apply(map_education_level)
+    
+    print("Distribución de niveles educativos:")
+    education_mapping = {
+        0: 'illiterate',
+        1: 'basic.4y', 
+        2: 'basic.6y',
+        3: 'basic.9y',
+        4: 'high.school',
+        5: 'professional.course',
+        6: 'university.degree',
+        -1: 'unknown'
+    }
+    
+    for code, level in education_mapping.items():
+        count = (df['education_ordinal'] == code).sum()
+        print(f"Nivel {code} ({level}): {count} registros")
+    
+    # 5. Preprocesamiento de otras variables categóricas
+        
+    # Variables para One-Hot Encoding (nominales)
+    one_hot_cols = ['job', 'marital', 'contact', 'month', 'day_of_week', 'poutcome']
+    
+    # Variables para Label Encoding (binarias)
+    label_encode_cols = ['default', 'housing', 'loan', 'y']
+    
+    # Aplicar Label Encoding
+    label_encoders = {}
+    for col in label_encode_cols:
+        le = LabelEncoder()
+        df[col + '_encoded'] = le.fit_transform(df[col])
+        label_encoders[col] = le
+        print(f"Label Encoding para {col}: {dict(zip(le.classes_, le.transform(le.classes_)))}")
+    
+    # 6. Preprocesamiento de variables numéricas
+    
+    scaler = StandardScaler()
+    numerical_scaled = scaler.fit_transform(df[numerical_cols])
+    df_numerical_scaled = pd.DataFrame(numerical_scaled, 
+                                     columns=[col + '_scaled' for col in numerical_cols])
+    
+    print("Estadísticas después del escalamiento:")
+    print(df_numerical_scaled.describe())
+    
+    # 7. Manejo de valores especiales
+    
+    # pdays = 999 indica que no hubo contacto previo
+    df['previous_contact'] = (df['pdays'] != 999).astype(int)
+    print(f"Clientes con contacto previo: {df['previous_contact'].sum()} de {len(df)}")
+    
+    # Manejar valores unknown en educación (imputar con la moda)
+    unknown_mask = df['education_ordinal'] == -1
+    if unknown_mask.sum() > 0:
+        mode_education = df[df['education_ordinal'] != -1]['education_ordinal'].mode()[0]
+        df.loc[unknown_mask, 'education_ordinal'] = mode_education
+        print(f"Valores 'unknown' en educación imputados con: {education_mapping[mode_education]}")
+    
+    # 8. Crear dataset preprocesado final
+    
+    # Combinar todas las transformaciones
+    df_final = pd.concat([
+        df[one_hot_cols],  # Variables para one-hot encoding
+        df[[col + '_encoded' for col in label_encode_cols]],  # Variables label encoded
+        df[['education_ordinal']],  # Educación codificada ordinalmente
+        df_numerical_scaled,  # Variables numéricas escaladas
+        df[['previous_contact']]  # Nueva variable creada
+    ], axis=1)
+    
+    # Aplicar One-Hot Encoding a las variables nominales
+    df_final = pd.get_dummies(df_final, columns=one_hot_cols, prefix=one_hot_cols)
+    
+    
+    # 9. Separar características y variable objetivo
+    X = df_final.drop('y_encoded', axis=1)
+    y = df_final['y_encoded']
+    
+    # 10. Análisis de correlación con educación
+    
+    # Correlación entre educación y la variable objetivo
+    education_corr = np.corrcoef(df_final['education_ordinal'], y)[0,1]
+    print(f"Correlación entre nivel educativo y suscripción: {education_corr:.4f}")
+    
+    # Distribución de suscripciones por nivel educativo
+    print("\nTasa de suscripción por nivel educativo:")
+    for code, level in education_mapping.items():
+        if code != -1:  # Excluir unknown
+            mask = df['education_ordinal'] == code
+            if mask.sum() > 0:
+                subscription_rate = y[mask].mean()
+                count = mask.sum()
+                print(f"{level}: {subscription_rate:.3f} ({count} registros)")
+    
+    return X, y, df_final, label_encoders, scaler, education_mapping
+
+
+
+    
 
 
 
