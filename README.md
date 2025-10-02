@@ -6,15 +6,14 @@ Ya que en esta ocasión no se realizarán ejercicios teoricos, unicamente se enc
 - 3. Reporte de resultados.
 
 # Técnica de clasificadores: Bank Marketing Dataset
-
 ## Descripción del Proyecto
-
+Se realiza la comparación de múltiples técnicas de clasificación—Naive Bayes Gaussiano, Análisis Discriminante Lineal (LDA), Análisis Discriminante Cuadrático (QDA), Criterio de Fisher y K-NN—aplicadas al conjunto de datos \textit{Bank Marketing} para predecir la suscripción de clientes a depósitos a plazo fijo.
 
 # Análisis computacional mediante simulaciones
 ## Descripción del Proyecto
+Se describe la implementación en Python de un análisis computacional mediante simulaciones comparando el desempeño de diversos clasificadores frente al clasificador óptimo de Bayes. El sistema genera datos sintéticos a partir de distribuciones normales multivariadas y evalúa métodos como LDA, QDA, Naive Bayes, Fisher y k-NN en diferentes escenarios controlados.
 
 ## Autores
-
 - Brain de Jesús Salazar García
 - Rodrigo Gonzaga S.
 
